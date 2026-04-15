@@ -1,0 +1,83 @@
+const puppeteer = require('puppeteer');
+const path = require('path');
+const XLSX = require('xlsx');
+const readline = require('readline');
+
+// Helper for the manual pause
+const askQuestion = (query) => {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(resolve => rl.question(query, ans => { rl.close(); resolve(ans); }));
+};
+
+async function createStensulTags() {
+  const userDataDir = path.join(__dirname, 'user_data');
+  const browser = await puppeteer.launch({
+    headless: false,
+    defaultViewport: null,
+    userDataDir: userDataDir,
+    args: ['--start-maximized']
+  });
+
+  const page = await browser.newPage();
+  
+  const workbook = XLSX.readFile('tags.xlsx'); 
+  const sheetName = workbook.SheetNames[0];
+  const tagsToCreate = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+  try {
+    const targetUrl = "https://samsung.stensul.com/admin/studio/library/696a676559529b2ca7016af6";
+    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+    const mainBtn = 'button[data-automation-id="personalization-tags"]';
+    await page.waitForSelector(mainBtn, { visible: true, timeout: 20000 });
+    await page.click(mainBtn);
+
+    for (const entry of tagsToCreate) {
+      let rawLabel = String(entry.Label || "").trim();
+      let cleanLabel = rawLabel.replace(/[{}]/g, ""); 
+      let tagValue = String(entry.Tag || "").trim();
+
+      if (!cleanLabel || !tagValue) continue;
+
+      console.log(`Processing: "${cleanLabel}"`);
+
+      const createBtn = 'button[data-automation-id="create-new-tag"]';
+      await page.waitForSelector(createBtn, { visible: true });
+      await page.click(createBtn);
+
+      const labelInput = 'input[data-automation-id="label-name"]';
+      await page.waitForSelector(labelInput, { visible: true });
+      await page.click(labelInput, { clickCount: 3 });
+      await page.keyboard.press('Backspace');
+      await page.type(labelInput, cleanLabel);
+
+      const tagInput = 'input[data-automation-id="placeholder"]';
+      await page.waitForSelector(tagInput, { visible: true });
+      await page.click(tagInput, { clickCount: 3 });
+      await page.keyboard.press('Backspace');
+      await page.type(tagInput, tagValue);
+
+      const acceptBtn = 'a[data-automation-id="confirm-tag-action"]';
+      await page.click(acceptBtn);
+      
+      await new Promise(r => setTimeout(r, 800));
+    }
+
+    // --- MANUAL WAIT SECTION ---
+    console.log("\n---------------------------------------------------------");
+    console.log("ALL TAGS ENTERED!");
+    console.log("Please manually click the 'Save' button in Stensul now.");
+    console.log("After you are done, come back here and press ENTER to close.");
+    console.log("---------------------------------------------------------");
+
+    await askQuestion(""); 
+
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+  }
+
+  console.log("Closing browser...");
+  await browser.close();
+}
+
+createStensulTags();
