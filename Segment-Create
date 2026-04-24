@@ -1,0 +1,94 @@
+const puppeteer = require('puppeteer');
+const path = require('path');
+
+(async () => {
+  const userDataDir = path.join(__dirname, 'user_data');
+  const browser = await puppeteer.launch({
+    headless: false,
+    defaultViewport: null,
+    userDataDir: userDataDir,
+    args: ['--start-maximized']
+  });
+
+  const stensulPage = await browser.newPage();
+  await stensulPage.bringToFront();
+  
+  console.log("🚀 Starting Stensul 5-Segment Pair Migration...");
+  await stensulPage.goto('https://samsung.stensul.com/admin/conditionals?sort=name', { 
+    waitUntil: 'networkidle2' 
+  }); 
+
+  // Updated selectors from your HTML
+  const addButtonSelector = '[data-automation-id="create-new-conditional"]';
+  const nameInputSelector = '#name';
+  const textAreaSelector = '[data-automation-id="conditional-input-content"]';
+  const saveButtonSelector = '[data-automation-id="conditional-save-create"]';
+
+  for (let i = 1; i <= 5; i++) {
+    const isFirst = (i === 1);
+    const isLast = (i === 5);
+    const baseName = isLast ? "Default" : `Segment ${i.toString().padStart(2, '0')}`;
+
+    // The two parts of the pair
+    const pair = [
+      { suffix: " - Start", type: "Before" },
+      { suffix: " - End", type: "After" }
+    ];
+
+    for (const item of pair) {
+      let logic = "";
+      
+      // Determine logic string
+      if (item.type === "After") {
+        logic = "<% } %>";
+      } else {
+        if (isFirst) {
+          logic = `<% if ( targetData.Stensul == "TBC" ) { %>`;
+        } else if (isLast) {
+          logic = `<% else { %>`;
+        } else {
+          logic = `<% else if ( targetData.Stensul == "TBC" ) { %>`;
+        }
+      }
+
+      try {
+        const fullName = `${baseName}${item.suffix}`;
+        console.log(`🤖 Creating: ${fullName}`);
+        
+        // 1. Click Add Button (Using evaluate to bypass overlay issues)
+        await stensulPage.waitForSelector(addButtonSelector, { visible: true });
+        await stensulPage.evaluate((sel) => document.querySelector(sel).click(), addButtonSelector);
+        
+        // 2. Fill Name
+        await stensulPage.waitForSelector(nameInputSelector, { visible: true });
+        await stensulPage.type(nameInputSelector, fullName);
+
+        // 3. Select "Unstructured via scripting"
+        await stensulPage.click('[data-automation-id="conditional-select-type"]');
+        await new Promise(r => setTimeout(r, 600));
+        await stensulPage.keyboard.type("Unstructured");
+        await stensulPage.keyboard.press('Enter');
+
+        // 4. Fill the "Conditional Code" textarea
+        await stensulPage.waitForSelector(textAreaSelector, { visible: true });
+        // Use evaluate to set value quickly, then type a space to trigger Stensul's "Save" state
+        await stensulPage.focus(textAreaSelector);
+        await stensulPage.keyboard.type(logic);
+
+        // 5. Click Save
+        console.log(`💾 Saving...`);
+        await stensulPage.click(saveButtonSelector);
+
+        // 6. Wait for modal to disappear
+        await stensulPage.waitForSelector(nameInputSelector, { hidden: true });
+        await new Promise(r => setTimeout(r, 1200)); 
+
+      } catch (err) {
+        console.error(`❌ Error on ${baseName}${item.suffix}:`, err.message);
+        break; 
+      }
+    }
+  }
+
+  console.log("🏁 Success! 10 library items created (5 pairs).");
+})();
