@@ -1,0 +1,81 @@
+const puppeteer = require('puppeteer');
+const path = require('path');
+
+(async () => {
+  const userDataDir = path.join(__dirname, 'user_data');
+  const browser = await puppeteer.launch({
+    headless: false,
+    defaultViewport: null,
+    userDataDir: userDataDir,
+    args: ['--start-maximized']
+  });
+
+  const stensulPage = await browser.newPage();
+  await stensulPage.bringToFront();
+  
+  console.log("🚀 Starting Stensul Segment Migration (06 to 20)...");
+  await stensulPage.goto('https://samsung.stensul.com/admin/conditionals?sort=name', { 
+    waitUntil: 'networkidle2' 
+  }); 
+
+  const addButtonSelector = '[data-automation-id="create-new-conditional"]';
+  const nameInputSelector = '#name';
+  const textAreaSelector = '[data-automation-id="conditional-input-content"]';
+  const saveButtonSelector = '[data-automation-id="conditional-save-create"]';
+
+  // Loop from 6 to 20
+  for (let i = 6; i <= 20; i++) {
+    const baseName = `Segment ${i.toString().padStart(2, '0')}`;
+
+    // The two parts of the pair
+    const pair = [
+      { suffix: " - Start", type: "Before" },
+      { suffix: " - End", type: "After" }
+    ];
+
+    for (const item of pair) {
+      let logic = "";
+      
+      if (item.type === "After") {
+        logic = "<% } %>";
+      } else {
+        // Since you are starting at 06, we assume 01-05 already exist.
+        // Therefore, these will all be "else if" blocks.
+        logic = `<% else if ( targetData.Stensul == "TBC" ) { %>`;
+      }
+
+      try {
+        const fullName = `${baseName}${item.suffix}`;
+        console.log(`🤖 Creating: ${fullName}`);
+        
+        await stensulPage.waitForSelector(addButtonSelector, { visible: true });
+        await stensulPage.evaluate((sel) => document.querySelector(sel).click(), addButtonSelector);
+        
+        await stensulPage.waitForSelector(nameInputSelector, { visible: true });
+        await stensulPage.type(nameInputSelector, fullName);
+
+        await stensulPage.click('[data-automation-id="conditional-select-type"]');
+        await new Promise(r => setTimeout(r, 600));
+        await stensulPage.keyboard.type("Unstructured");
+        await stensulPage.keyboard.press('Enter');
+
+        await stensulPage.waitForSelector(textAreaSelector, { visible: true });
+        await stensulPage.focus(textAreaSelector);
+        await stensulPage.keyboard.type(logic);
+
+        console.log(`💾 Saving ${fullName}...`);
+        await stensulPage.click(saveButtonSelector);
+
+        // Wait for the modal/overlay to clear before next iteration
+        await stensulPage.waitForSelector(nameInputSelector, { hidden: true });
+        await new Promise(r => setTimeout(r, 1200)); 
+
+      } catch (err) {
+        console.error(`❌ Error on ${fullName}:`, err.message);
+        break; 
+      }
+    }
+  }
+
+  console.log("🏁 Success! Segments 06 through 20 created.");
+})();
