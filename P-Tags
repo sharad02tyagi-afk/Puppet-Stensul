@@ -25,7 +25,7 @@ async function createStensulTags() {
   const tagsToCreate = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
   try {
-    const targetUrl = "https://samsung.stensul.com/admin/studio/library/696a676559529b2ca7016af6";
+    const targetUrl = "URL";
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
     const mainBtn = 'button[data-automation-id="personalization-tags"]';
